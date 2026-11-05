@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 应用内部缓存目录：FileProvider 分享导出文件的实际存放位置 -->
+    <cache-path name="cache_share" path="share/" />
+    <files-path name="files_share" path="share/" />
+    <external-cache-path name="ext_cache_share" path="share/" />
+    <external-files-path name="ext_files_share" path="share/" />
+</paths>

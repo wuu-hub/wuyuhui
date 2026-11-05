@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">间隔背单词</string>
+    <string name="review">开始复习</string>
+    <string name="quiz">单词测试</string>
+    <string name="word_list">单词本</string>
+    <string name="import_lib">导入词库</string>
+    <string name="reminder">复习提醒</string>
+    <string name="export_image">分享学习报告图</string>
+    <string name="export_csv">分享/导出 CSV</string>
+</resources>
