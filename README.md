@@ -1,64 +1,92 @@
-# 间隔背单词 WordApp
+# 单词记忆（WordMemo）
 
-基于艾宾浩斯遗忘曲线的 Android 背单词应用，覆盖 B4 业务核心与 P4 导出分享模块。
+《Android 移动终端应用开发技术》课程设计项目，同一项目产出两个独立可评分成果：
+
+| 部分 | 课程 | 定位 |
+| --- | --- | --- |
+| 主 App —— **B4 单词记忆** | Android 移动终端应用开发技术（2 学分） | 追求技术深度 |
+| 伴生模块 —— **P4 分享 / 导出卡片** | 移动互联网应用开发实战（1 学分） | 小而完整、可独立验收 |
+
+## 选题
+
+- 主 App：**B4 单词记忆**——基于艾宾浩斯遗忘曲线的复习调度、复习队列、词库导入、测试模式。
+- 伴生模块：**P4 分享 / 导出卡片**——生成统计卡片位图与 CSV 数据文件，通过系统分享面板发送到其他 App。
+
+选题说明见 [`docs/01-选题说明.md`](docs/01-选题说明.md)，功能清单见 [`docs/02-功能清单.md`](docs/02-功能清单.md)，伴生模块设计见 [`docs/03-伴生模块-P4-设想.md`](docs/03-伴生模块-P4-设想.md)，数据模型与算法见 [`docs/04-数据模型与技术选型.md`](docs/04-数据模型与技术选型.md)。
+
+## 当前进度
+
+已完成数据层、调度算法与界面骨架，可直接运行：
+
+- 词库列表 → 词库详情 → 词条详情 三级导航可点击；
+- 词库与词条真实写入 Room，重启 App 后仍在；
+- 词条详情提供四档自评按钮，点击即按算法重算下次复习时间并写入复习记录；
+- 首次启动自动写入内置示例词库。
 
 ## 技术栈
 
-- 语言：Kotlin（AGP 9.3 内置 Kotlin 支持，无需额外 Kotlin 插件）
-- 构建：Gradle 9.5 + AGP 9.3.0，compileSdk/targetSdk 37，minSdk 24
-- UI：ViewBinding + Material 3 + RecyclerView + ConstraintLayout
-- 存储：原生 SQLite（SQLiteOpenHelper，无 Room 依赖）
-- 通知：AlarmManager + BroadcastReceiver + NotificationChannel
-- 分享：FileProvider + Intent.ACTION_SEND（全程 content://，无 file://）
+- 语言：Kotlin（原生 Android，不使用 Flutter / React Native / uni-app 等跨平台框架）
+- UI：Jetpack Compose + Material 3
+- 持久化：Room（词库、词条、复习记录）
+- 异步：Kotlin 协程 + Flow + ViewModel
+- 伴生模块跨进程通信：Intent、FileProvider、Bitmap 缓存目录
+- 构建：Gradle 9.5.0 + AGP 9.3.0，`compileSdk 37`、`minSdk 26`
 
-## 需求与实现对照
+## 构建与运行
 
-### B4 业务核心
+用 Android Studio 打开本目录（工程根目录），等待 Gradle 同步完成后直接运行 `app` 模块即可。
+首次同步需要联网下载 AndroidX / Compose 依赖。命令行构建：
 
-| 需求 | 实现文件 | 说明 |
-| --- | --- | --- |
-| 艾宾浩斯间隔重复 | `data/EbbinghausScheduler.kt` | 间隔序列 1/2/4/7/15/30 天；答对升阶按新间隔排期，答错降阶且 10 分钟后重学 |
-| 复习队列 | `data/DbHelper.kt`、`ui/ReviewActivity.kt` | 查询 `next_review_at <= now` 的到期词，按到期时间排序，再补未学新词 |
-| 词库导入 | `export/CsvUtil.kt`、`MainActivity.kt` | SAF `ACTION_OPEN_DOCUMENT` 选 CSV，UTF-8 解析，支持引号/逗号，唯一索引去重批量入库 |
-| 测试 | `ui/QuizActivity.kt` | 看英文选释义四选一，随机出题、即时红绿反馈、结束给出得分与正确率 |
-| 通知提醒 | `notify/NotificationHelper.kt`、`AlarmReceiver.kt`、`BootReceiver.kt` | 通知渠道 + 每日固定时间闹钟，通知显示到期数并可点开 App；开机自动重建；Android 13+ 申请通知权限，无精确闹钟权限时自动退化 |
-
-### P4 导出分享模块
-
-| 需求 | 实现文件 | 说明 |
-| --- | --- | --- |
-| 生成 Bitmap 图片 | `export/BitmapReport.kt` | 纯 Canvas 手绘 1080×1440 学习报告（渐变头、正确率、四项统计） |
-| 生成 CSV 文件 | `export/CsvUtil.kt`、`export/ShareHelper.kt` | 导出全部单词及复习状态，字段含特殊字符时自动加引号转义 |
-| Intent + FileProvider 跨 App 分享 | `export/ShareHelper.kt`、`res/xml/file_paths.xml`、`AndroidManifest.xml` | 文件写入 `cacheDir/share/`，经 FileProvider 生成 `content://` URI，`ACTION_SEND` 配合 `FLAG_GRANT_READ_URI_PERMISSION` 分享；另支持 SAF `ACTION_CREATE_DOCUMENT` 另存本地 |
-
-> Android 7.0（API 24）起禁止跨 App 直接使用 `file://`，本项目所有分享 URI 均由 FileProvider 生成，代码中不出现 file://。
-
-## 如何打开与运行
-
-1. 打开 Android Studio，选择 **Open**（不要 New），选择本 `WordApp` 目录。
-2. 等待 Gradle Sync 完成（依赖本地已缓存，可离线）。
-3. 启动模拟器或连接手机，点击 Run；或直接安装已构建的
-   `app/build/outputs/apk/debug/app-debug.apk`。
-
-## 命令行构建
-
-```
-gradlew.bat clean assembleDebug
+```powershell
+.\gradlew.bat :app:assembleDebug
 ```
 
-产物路径：`app/build/outputs/apk/debug/app-debug.apk`
+本机 JDK 直接使用 Android Studio 自带的运行时（`Android Studio\jbr`），无需单独安装 JDK。
 
-## 导入 CSV 格式
+### 单元测试说明
 
-每行一个单词，首行表头可选：
+算法测试位于 `app/src/test/java/.../EbbinghausSchedulerTest.kt`。在 Android Studio 内直接点测试类运行即可。
+命令行 `.\gradlew.bat :app:testDebugUnitTest` 在本机 JDK 25 环境下会因 Gradle 测试 worker 无法启动而失败（详见 `docs/04-数据模型与技术选型.md` 的已知限制），改用 JUnitCore 直接执行编译产物可得到同样结果。
+
+## 目录结构
 
 ```
-word,meaning,example
-abandon,v. 放弃；抛弃,Never abandon your dream.
+WordMemo/
+├── app/                          # 主 App 模块（B4 单词记忆）
+│   └── src/main/java/com/wuyuhui/wordmemo/
+│       ├── data/
+│       │   ├── local/            # Room 实体、DAO、数据库
+│       │   └── repository/       # 仓库层，聚合数据访问
+│       ├── domain/scheduler/     # 艾宾浩斯调度算法（纯函数，可单测）
+│       └── ui/
+│           ├── components/       # 加载 / 空 / 错误三态组件
+│           ├── library/          # 词库列表、词库详情
+│           ├── word/             # 词条详情与自评
+│           ├── placeholder/      # 今日、测试、统计（后续里程碑接入）
+│           ├── navigation/       # 导航图与底部栏
+│           └── theme/            # 主题
+├── app/src/test/                 # 调度算法单元测试
+├── docs/                         # 选题、功能清单、伴生模块、数据模型文档
+├── gradle/libs.versions.toml      # 依赖版本集中管理
+├── build.gradle.kts
+└── settings.gradle.kts
 ```
 
-- 三列依次为：单词、释义、例句（例句可省略）
-- 字段内含逗号时用英文双引号包裹，引号本身写成 `""`
-- 与库中已有单词重复的行会自动跳过
+## 开发里程碑
 
-应用首次启动会预置 20 个示例单词，可直接体验全部功能。
+课程要求 10 次实验课推进，当前完成：
+
+- [x] 里程碑 1：选题登记 + 主 App 功能清单 + 伴生模块设想 + 建仓首次提交
+- [x] 里程碑 2：原型图 + 技术选型 + 数据模型
+- [x] 里程碑 3：主 App 骨架 + 导航 + 基础 UI
+- [ ] 里程碑 4：主 App 核心功能 ①：数据持久化
+- [ ] 里程碑 5：主 App 核心功能 ②：网络或设备能力
+- [ ] 里程碑 6：主 App 核心功能 ③ + 主流程整合
+- [ ] 里程碑 7：权限 / 异常 / 空态 + 伴生模块立项与骨架
+- [ ] 里程碑 8：伴生模块核心功能 + 主 App UI 打磨
+- [ ] 里程碑 9：伴生模块完成 + 录屏 / 问答卷 / PPT
+- [ ] 里程碑 10：正式提交 + 抽查答辩
+
+## 学术诚信
+
+允许使用 LLM / AI 辅助，但不直接抄袭他人项目、不购买代码、不伪造 Git 记录或录屏。项目代码需能自行解释，抽象问答时将逐行说明关键实现。
