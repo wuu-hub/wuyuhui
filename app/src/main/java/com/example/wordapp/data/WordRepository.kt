@@ -22,6 +22,9 @@ class WordRepository private constructor(private val context: Context) {
         @Volatile
         private var instance: WordRepository? = null
 
+        /** 单次复习最多带入多少条到期旧词，避免一次刷太多 */
+        private const val MAX_DUE_PER_SESSION = 30
+
         fun get(context: Context): WordRepository =
             instance ?: synchronized(this) {
                 instance ?: WordRepository(context.applicationContext).also {
@@ -68,10 +71,14 @@ class WordRepository private constructor(private val context: Context) {
 
     /**
      * 取本次要学习/复习的队列：到期复习词 + 未学新词（新词最多补 10 个）。
+     * 到期词按逾期时间倒序排列，且单次最多带入 [dueLimit] 条。
      */
-    fun getStudyQueue(newWordLimit: Int = 10): List<Word> {
+    fun getStudyQueue(
+        newWordLimit: Int = 10,
+        dueLimit: Int = MAX_DUE_PER_SESSION
+    ): List<Word> {
         val now = System.currentTimeMillis()
-        val due = db.getDueWords(now)
+        val due = db.getDueWords(now, dueLimit)
         val fresh = db.getNewWords(newWordLimit)
         return due + fresh
     }
@@ -89,10 +96,18 @@ class WordRepository private constructor(private val context: Context) {
         return db.getById(word.id) ?: word
     }
 
-    /** 测试出题：至少需要 4 个单词才能凑齐选项 */
+    /** 测试出题：至少需要 4 个单词才能凑齐选项；优先抽尚未掌握的单词 */
     fun quizWords(questionCount: Int): List<Word> {
-        val all = db.getRandomWords(questionCount.coerceAtLeast(4))
-        return all
+        val need = questionCount.coerceAtLeast(4)
+        val unmastered = db.getRandomWordsUnmastered(need)
+        if (unmastered.size >= need) return unmastered
+
+        // 未掌握的词不够时，用全库随机补齐（去掉重复）
+        val used = unmastered.map { it.id }.toSet()
+        val extra = db.getRandomWords(need + used.size)
+            .filter { it.id !in used }
+            .take(need - unmastered.size)
+        return unmastered + extra
     }
 
     fun distractors(question: Word, count: Int = 3): List<String> {

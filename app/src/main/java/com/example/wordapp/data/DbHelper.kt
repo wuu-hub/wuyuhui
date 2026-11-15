@@ -105,12 +105,13 @@ class DbHelper private constructor(context: Context) :
         )
     }
 
-    /** 到期复习队列：next_review_at <= now，越早到期越靠前 */
-    fun getDueWords(now: Long): List<Word> {
+    /** 到期复习队列：next_review_at <= now，越早到期越靠前；limit 限制单次带入条数 */
+    fun getDueWords(now: Long, limit: Int = Int.MAX_VALUE): List<Word> {
         val result = ArrayList<Word>()
         val c = readableDatabase.rawQuery(
-            "SELECT * FROM $TABLE WHERE learned = 1 AND next_review_at <= ? ORDER BY next_review_at ASC",
-            arrayOf(now.toString())
+            "SELECT * FROM $TABLE WHERE learned = 1 AND next_review_at <= ? " +
+                "ORDER BY next_review_at ASC LIMIT ?",
+            arrayOf(now.toString(), limit.toString())
         )
         c.use { while (it.moveToNext()) result.add(it.toWord()) }
         return result
@@ -146,6 +147,17 @@ class DbHelper private constructor(context: Context) :
         val result = ArrayList<Word>()
         val c = readableDatabase.rawQuery(
             "SELECT * FROM $TABLE ORDER BY RANDOM() LIMIT ?", arrayOf(limit.toString()))
+        c.use { while (it.moveToNext()) result.add(it.toWord()) }
+        return result
+    }
+
+    /** 随机取尚未掌握的单词（stage < 已掌握），用于测试优先出未掌握的词 */
+    fun getRandomWordsUnmastered(limit: Int): List<Word> {
+        val result = ArrayList<Word>()
+        val c = readableDatabase.rawQuery(
+            "SELECT * FROM $TABLE WHERE stage < ? ORDER BY RANDOM() LIMIT ?",
+            arrayOf(EbbinghausScheduler.LAST_STAGE.toString(), limit.toString())
+        )
         c.use { while (it.moveToNext()) result.add(it.toWord()) }
         return result
     }

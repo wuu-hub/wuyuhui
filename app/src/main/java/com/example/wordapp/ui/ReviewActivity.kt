@@ -16,7 +16,10 @@ class ReviewActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityReviewBinding
     private lateinit var repository: WordRepository
-    private lateinit var queue: List<Word>
+    private lateinit var queue: MutableList<Word>
+
+    /** 本轮已追加过的错词，避免反复错导致无限循环 */
+    private val retried = mutableSetOf<Long>()
 
     private var index = 0
     private var remembered = 0
@@ -27,7 +30,7 @@ class ReviewActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         repository = WordRepository.get(this)
-        queue = repository.getStudyQueue()
+        queue = repository.getStudyQueue().toMutableList()
 
         if (queue.isEmpty()) {
             showDone(empty = true)
@@ -48,8 +51,13 @@ class ReviewActivity : AppCompatActivity() {
 
     private fun answer(remember: Boolean) {
         val current = queue[index]
-        repository.review(current, remember)
-        if (remember) remembered++
+        val updated = repository.review(current, remember)
+        if (remember) {
+            remembered++
+        } else if (retried.add(current.id)) {
+            // 答错的词排到本轮末尾再出现一次，当天加固记忆
+            queue.add(updated)
+        }
 
         index++
         if (index >= queue.size) {
@@ -83,7 +91,7 @@ class ReviewActivity : AppCompatActivity() {
         binding.tvDoneSummary.text = if (empty) {
             "词库还是空的，先导入词库或添加单词吧。"
         } else {
-            "本次共学习 ${queue.size} 个单词，\n其中记得 $remembered 个，继续保持！"
+            "本次共复习 ${queue.size} 次，\n其中记得 $remembered 次，继续保持！"
         }
     }
 }
