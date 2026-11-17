@@ -69,6 +69,9 @@ class WordRepository private constructor(private val context: Context) {
 
     fun getAllWords(): List<Word> = db.getAllWords()
 
+    /** 按 id 取最新状态的单词，用于恢复未答完的复习队列 */
+    fun wordById(id: Long): Word? = db.getById(id)
+
     /**
      * 取本次要学习/复习的队列：到期复习词 + 未学新词（新词最多补 10 个）。
      * 到期词按逾期时间倒序排列，且单次最多带入 [dueLimit] 条。

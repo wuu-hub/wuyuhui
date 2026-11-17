@@ -13,7 +13,7 @@ class DbHelper private constructor(context: Context) :
 
     companion object {
         private const val DB_NAME = "wordapp.db"
-        private const val DB_VERSION = 1
+        private const val DB_VERSION = 2
         const val TABLE = "words"
 
         @Volatile
@@ -45,11 +45,27 @@ class DbHelper private constructor(context: Context) :
         )
         // 单词唯一，导入时去重
         db.execSQL("CREATE UNIQUE INDEX idx_word ON $TABLE(word)")
+        createQueryIndexes(db)
     }
 
+    /** 查询相关的索引：到期队列按 (learned, next_review_at) 过滤排序，测试按 stage 抽题 */
+    private fun createQueryIndexes(db: SQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_due ON $TABLE(learned, next_review_at)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_stage ON $TABLE(stage)")
+    }
+
+    /**
+     * 升级策略：只做增量迁移，不再 DROP 表。
+     * 早期版本用 DROP + CREATE 升级，升一次版本就把用户已背的词全清空，
+     * 这里改成按版本号补索引，数据一律保留。
+     */
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS $TABLE")
-        onCreate(db)
+        // 1 -> 2：补查询索引
+        if (oldVersion < 2) createQueryIndexes(db)
+    }
+
+    override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        // 降级同样保留数据，索引留在库里也无害
     }
 
     /** 插入一个单词，重复单词返回 -1 */
