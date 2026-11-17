@@ -1,5 +1,6 @@
 package com.example.wordapp.ui
 
+import android.content.Context
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +14,18 @@ import com.example.wordapp.databinding.ActivityReviewBinding
  * “认识/不认识”的结果通过艾宾浩斯调度器更新下一次复习时间。
  */
 class ReviewActivity : AppCompatActivity() {
+
+    companion object {
+        private const val PREFS = "wordapp_review"
+        private const val KEY_IDS = "ids"
+        private const val KEY_INDEX = "index"
+        private const val KEY_REMEMBERED = "remembered"
+        private const val KEY_RETRIED = "retried"
+        private const val KEY_TIME = "saved_at"
+
+        /** 未完成的一轮复习最多保留一天，过期重新开始 */
+        private const val SESSION_TTL_MS = 24L * 60 * 60 * 1000
+    }
 
     private lateinit var binding: ActivityReviewBinding
     private lateinit var repository: WordRepository
@@ -30,7 +43,9 @@ class ReviewActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         repository = WordRepository.get(this)
-        queue = repository.getStudyQueue().toMutableList()
+
+        // 上次没答完的队列优先续上，避免切后台回来从头开始
+        queue = restoreSession() ?: repository.getStudyQueue().toMutableList()
 
         if (queue.isEmpty()) {
             showDone(empty = true)
@@ -47,6 +62,59 @@ class ReviewActivity : AppCompatActivity() {
         binding.btnDoneBack.setOnClickListener { finish() }
 
         render()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // 只在“答到一半”时保存，答完或没开始都不需要留现场
+        if (index in 1 until queue.size) saveSession() else clearSession()
+    }
+
+    /** 有可续答的会话就返回重建好的队列，否则返回 null 走新队列 */
+    private fun restoreSession(): MutableList<Word>? {
+        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val idsText = prefs.getString(KEY_IDS, null) ?: return null
+        val savedIndex = prefs.getInt(KEY_INDEX, 0)
+        if (idsText.isEmpty() || savedIndex <= 0) return null
+
+        val savedAt = prefs.getLong(KEY_TIME, 0)
+        if (System.currentTimeMillis() - savedAt > SESSION_TTL_MS) {
+            clearSession()
+            return null
+        }
+
+        val ids = idsText.split(",").mapNotNull { it.toLongOrNull() }
+        if (savedIndex >= ids.size) {
+            clearSession()
+            return null
+        }
+
+        val words = ids.mapNotNull { repository.wordById(it) }
+        if (words.size != ids.size) {
+            clearSession()
+            return null
+        }
+
+        index = savedIndex
+        remembered = prefs.getInt(KEY_REMEMBERED, 0)
+        prefs.getString(KEY_RETRIED, "")?.split(",")?.forEach {
+            it.toLongOrNull()?.let(retried::add)
+        }
+        return words.toMutableList()
+    }
+
+    private fun saveSession() {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_IDS, queue.joinToString(",") { it.id.toString() })
+            .putInt(KEY_INDEX, index)
+            .putInt(KEY_REMEMBERED, remembered)
+            .putString(KEY_RETRIED, retried.joinToString(","))
+            .putLong(KEY_TIME, System.currentTimeMillis())
+            .apply()
+    }
+
+    private fun clearSession() {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     private fun answer(remember: Boolean) {
@@ -86,12 +154,14 @@ class ReviewActivity : AppCompatActivity() {
     }
 
     private fun showDone(empty: Boolean) {
+        clearSession()
         binding.layoutStudy.visibility = View.GONE
         binding.layoutDone.visibility = View.VISIBLE
-        binding.tvDoneSummary.text = if (empty) {
-            "词库还是空的，先导入词库或添加单词吧。"
-        } else {
-            "本次共复习 ${queue.size} 次，\n其中记得 $remembered 次，继续保持！"
+        binding.tvDoneSummary.text = when {
+            !empty -> "本次共复习 ${queue.size} 次，\n其中记得 $remembered 次，继续保持！"
+            // 词库本身没词，和“今天都复习完了”是两回事，提示要分开
+            repository.stats().total == 0 -> "词库还是空的，先导入词库或添加单词吧。"
+            else -> "今天的复习都完成了，\n明天再来巩固吧。"
         }
     }
 }
