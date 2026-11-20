@@ -6,9 +6,14 @@ import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.text.InputType
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -19,6 +24,7 @@ import com.example.wordapp.databinding.ActivityMainBinding
 import com.example.wordapp.export.BitmapReport
 import com.example.wordapp.export.CsvUtil
 import com.example.wordapp.export.ShareHelper
+import com.example.wordapp.net.OnlineDict
 import com.example.wordapp.notify.NotificationHelper
 import com.example.wordapp.ui.QuizActivity
 import com.example.wordapp.ui.ReviewActivity
@@ -65,9 +71,7 @@ class MainActivity : AppCompatActivity() {
             btnList.setOnClickListener {
                 startActivity(Intent(this@MainActivity, WordListActivity::class.java))
             }
-            btnImport.setOnClickListener {
-                openCsvLauncher.launch(arrayOf("text/*", "text/comma-separated-values", "*/*"))
-            }
+            btnImport.setOnClickListener { showImportOptions() }
             btnReminder.setOnClickListener { onReminderClick() }
             btnImage.setOnClickListener { shareReportImage() }
             btnCsv.setOnClickListener { showCsvOptions() }
@@ -91,6 +95,95 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------- 词库导入 ----------
+
+    /** 导入入口：本地 CSV 还是联网查词 */
+    private fun showImportOptions() {
+        AlertDialog.Builder(this)
+            .setTitle("导入词库")
+            .setItems(arrayOf("从本地 CSV 文件导入", "联网查词并添加")) { _, which ->
+                if (which == 0) {
+                    openCsvLauncher.launch(arrayOf("text/*", "text/comma-separated-values", "*/*"))
+                } else {
+                    showOnlineLookupDialog()
+                }
+            }
+            .show()
+    }
+
+    /** 输入要查的单词，确认后联网查释义 */
+    private fun showOnlineLookupDialog() {
+        val padding = (16 * resources.displayMetrics.density).toInt()
+        val input = EditText(this).apply {
+            hint = "输入英文单词，例如 benefit"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setSingleLine(true)
+            setPadding(padding, padding, padding, padding)
+        }
+        val container = FrameLayout(this).apply { addView(input) }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("联网查词")
+            .setView(container)
+            .setPositiveButton("查询", null)
+            .setNegativeButton("取消", null)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val term = input.text.toString().trim()
+                if (term.isEmpty()) {
+                    input.error = "先输入一个英文单词"
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                doOnlineLookup(term)
+            }
+        }
+        dialog.show()
+    }
+
+    /** 子线程请求词典，回到主线程提示并入库 */
+    private fun doOnlineLookup(term: String) {
+        if (!isOnline()) {
+            toast("当前没有网络连接，联网查词需要先连网")
+            return
+        }
+        val loading = AlertDialog.Builder(this)
+            .setMessage("正在联网查询“$term”…")
+            .setCancelable(false)
+            .create()
+        loading.show()
+
+        Thread {
+            val result = OnlineDict.lookup(term)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    loading.dismiss()
+                    return@runOnUiThread
+                }
+                loading.dismiss()
+                when (result) {
+                    is OnlineDict.Result.Success -> {
+                        val added = repository.importWords(listOf(result.word))
+                        if (added > 0) {
+                            toast("已加入词库：${result.word.word}\n${result.word.meaning}")
+                            refreshStats()
+                        } else {
+                            toast("词库里已经有“${result.word.word}”了")
+                        }
+                    }
+                    is OnlineDict.Result.Failure -> toast(result.reason)
+                }
+            }
+        }.start()
+    }
+
+    /** 当前是否有可用网络，避免在断网时白等超时 */
+    private fun isOnline(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
 
     private fun importCsv(uri: Uri) {
         try {
