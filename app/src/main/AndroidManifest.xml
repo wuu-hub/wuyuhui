@@ -33,6 +33,9 @@
             android:name=".ui.WordListActivity"
             android:exported="false" />
         <activity
+            android:name=".ui.WordDetailActivity"
+            android:exported="false" />
+        <activity
             android:name=".ui.ReviewActivity"
             android:exported="false" />
         <activity

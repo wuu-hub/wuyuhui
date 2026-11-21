@@ -7,9 +7,11 @@ import com.example.wordapp.data.EbbinghausScheduler
 import com.example.wordapp.data.Word
 import com.example.wordapp.databinding.ItemWordBinding
 
-/** 单词本列表适配器 */
-class WordAdapter(private val words: List<Word>) :
-    RecyclerView.Adapter<WordAdapter.VH>() {
+/** 单词本列表适配器，点击条目回传该词给列表页 */
+class WordAdapter(
+    private val words: List<Word>,
+    private val onItemClick: ((Word) -> Unit)? = null
+) : RecyclerView.Adapter<WordAdapter.VH>() {
 
     class VH(val binding: ItemWordBinding) : RecyclerView.ViewHolder(binding.root)
 
@@ -32,6 +34,7 @@ class WordAdapter(private val words: List<Word>) :
                 tvExample.visibility = android.view.View.GONE
             }
         }
+        holder.binding.root.setOnClickListener { onItemClick?.invoke(w) }
     }
 
     override fun getItemCount(): Int = words.size
