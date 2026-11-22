@@ -259,7 +259,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun shareReportImage() {
         val bitmap = BitmapReport.generate(repository.stats())
-        ShareHelper.shareImage(this, bitmap)
+        if (!ShareHelper.shareImage(this, bitmap)) {
+            toast("没有找到可以接收图片的应用")
+        }
     }
 
     private fun showCsvOptions() {
@@ -268,7 +270,9 @@ class MainActivity : AppCompatActivity() {
             .setTitle("导出 CSV")
             .setItems(arrayOf("分享给其他 App", "保存到本地")) { _, which ->
                 if (which == 0) {
-                    ShareHelper.shareCsv(this, csv)
+                    if (!ShareHelper.shareCsv(this, csv)) {
+                        toast("没有找到可以接收 CSV 的应用")
+                    }
                 } else {
                     createCsvLauncher.launch("words.csv")
                 }

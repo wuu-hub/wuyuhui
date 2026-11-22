@@ -1,5 +1,6 @@
 package com.example.wordapp.export
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -53,25 +54,49 @@ object ShareHelper {
     /**
      * 调起系统分享面板分享单个文件。
      * @param mimeType 例如 image/png、text/csv
+     * @return 是否成功调起；没有可接收的 App 时返回 false，由调用方提示
      */
-    fun share(context: Context, file: File, mimeType: String, title: String) {
-        val uri = contentUri(context, file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = mimeType
-            putExtra(Intent.EXTRA_STREAM, uri)
-            // 临时授予接收 App 读取该 URI 的权限
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    fun share(context: Context, file: File, mimeType: String, title: String): Boolean {
+        // 每次分享前清理一天前的旧文件，避免缓存无限增长
+        clearOldShares(context)
+
+        if (!canShare(context, mimeType)) return false
+
+        return try {
+            val uri = contentUri(context, file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, uri)
+                // 临时授予接收 App 读取该 URI 的权限
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(intent, title))
+            true
+        } catch (e: ActivityNotFoundException) {
+            false
         }
-        context.startActivity(Intent.createChooser(intent, title))
     }
 
-    fun shareImage(context: Context, bitmap: Bitmap) {
+    /** 系统里是否有能接收该类型的 App（Android 11+ 需配合 Manifest 的 queries 声明） */
+    fun canShare(context: Context, mimeType: String): Boolean {
+        val probe = Intent(Intent.ACTION_SEND).apply { type = mimeType }
+        return context.packageManager.queryIntentActivities(probe, 0).isNotEmpty()
+    }
+
+    /** 删除 share 目录下超过一天的旧文件 */
+    fun clearOldShares(context: Context) {
+        val dir = shareDir(context)
+        val cutoff = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+        dir.listFiles()?.forEach { file ->
+            if (file.isFile && file.lastModified() < cutoff) file.delete()
+        }
+    }
+
+    fun shareImage(context: Context, bitmap: Bitmap): Boolean =
         share(context, writeBitmap(context, bitmap), "image/png", "分享学习报告")
-    }
 
-    fun shareCsv(context: Context, csv: String) {
+    fun shareCsv(context: Context, csv: String): Boolean =
         share(context, writeCsv(context, csv), "text/csv", "分享词库 CSV")
-    }
 
     /**
      * 写入用户通过“另存为”（SAF ACTION_CREATE_DOCUMENT）选定的位置。
