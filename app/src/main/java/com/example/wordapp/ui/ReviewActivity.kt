@@ -8,6 +8,9 @@ import com.example.wordapp.data.EbbinghausScheduler
 import com.example.wordapp.data.Word
 import com.example.wordapp.data.WordRepository
 import com.example.wordapp.databinding.ActivityReviewBinding
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 复习页：按复习队列逐词卡片学习，
@@ -16,6 +19,9 @@ import com.example.wordapp.databinding.ActivityReviewBinding
 class ReviewActivity : AppCompatActivity() {
 
     companion object {
+        /** 从词条详情页“只复习这个词”带过来的单词 id */
+        const val EXTRA_WORD_ID = "extra_word_id"
+
         private const val PREFS = "wordapp_review"
         private const val KEY_IDS = "ids"
         private const val KEY_INDEX = "index"
@@ -25,6 +31,8 @@ class ReviewActivity : AppCompatActivity() {
 
         /** 未完成的一轮复习最多保留一天，过期重新开始 */
         private const val SESSION_TTL_MS = 24L * 60 * 60 * 1000
+
+        private val TIME_FORMAT = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA)
     }
 
     private lateinit var binding: ActivityReviewBinding
@@ -33,6 +41,9 @@ class ReviewActivity : AppCompatActivity() {
 
     /** 本轮已追加过的错词，避免反复错导致无限循环 */
     private val retried = mutableSetOf<Long>()
+
+    /** 只复习详情页指定的那一个词（单词语习模式），不参与整轮进度落盘 */
+    private var singleMode = false
 
     private var index = 0
     private var remembered = 0
@@ -44,8 +55,16 @@ class ReviewActivity : AppCompatActivity() {
 
         repository = WordRepository.get(this)
 
-        // 上次没答完的队列优先续上，避免切后台回来从头开始
-        queue = restoreSession() ?: repository.getStudyQueue().toMutableList()
+        val singleId = intent.getLongExtra(EXTRA_WORD_ID, 0L)
+        val singleWord = if (singleId > 0) repository.wordById(singleId) else null
+
+        queue = if (singleWord != null) {
+            singleMode = true
+            mutableListOf(singleWord)
+        } else {
+            // 上次没答完的队列优先续上，避免切后台回来从头开始
+            restoreSession() ?: repository.getStudyQueue().toMutableList()
+        }
 
         if (queue.isEmpty()) {
             showDone(empty = true)
@@ -66,6 +85,8 @@ class ReviewActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        // 单词语习只走一个词，不该覆盖掉整轮复习的续答现场
+        if (singleMode) return
         // 只在“答到一半”时保存，答完或没开始都不需要留现场
         if (index in 1 until queue.size) saveSession() else clearSession()
     }
@@ -122,7 +143,7 @@ class ReviewActivity : AppCompatActivity() {
         val updated = repository.review(current, remember)
         if (remember) {
             remembered++
-        } else if (retried.add(current.id)) {
+        } else if (!singleMode && retried.add(current.id)) {
             // 答错的词排到本轮末尾再出现一次，当天加固记忆
             queue.add(updated)
         }
@@ -154,10 +175,20 @@ class ReviewActivity : AppCompatActivity() {
     }
 
     private fun showDone(empty: Boolean) {
-        clearSession()
+        if (!singleMode) clearSession()
         binding.layoutStudy.visibility = View.GONE
         binding.layoutDone.visibility = View.VISIBLE
         binding.tvDoneSummary.text = when {
+            // 单词语习：直接把调度算出来的下次复习时间摆给用户看
+            singleMode -> {
+                val done = repository.wordById(queue.last().id) ?: queue.last()
+                val stage = if (done.learned) EbbinghausScheduler.stageLabel(done.stage) else "新词"
+                if (done.nextReviewAt > 0) {
+                    "「${done.word}」已复习完，当前$stage，\n下次复习：${TIME_FORMAT.format(Date(done.nextReviewAt))}"
+                } else {
+                    "「${done.word}」已复习完。"
+                }
+            }
             !empty -> "本次共复习 ${queue.size} 次，\n其中记得 $remembered 次，继续保持！"
             // 词库本身没词，和“今天都复习完了”是两回事，提示要分开
             repository.stats().total == 0 -> "词库还是空的，先导入词库或添加单词吧。"

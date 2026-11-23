@@ -75,7 +75,10 @@ class WordDetailActivity : AppCompatActivity() {
             btnBack.setOnClickListener { finish() }
             btnDetailBack.setOnClickListener { finish() }
             btnGoReview.setOnClickListener {
-                startActivity(Intent(this@WordDetailActivity, ReviewActivity::class.java))
+                // 带上当前词 id，复习页就只跑这一个词，不复用整轮队列
+                val intent = Intent(this@WordDetailActivity, ReviewActivity::class.java)
+                    .putExtra(ReviewActivity.EXTRA_WORD_ID, word.id)
+                startActivity(intent)
                 finish()
             }
         }
