@@ -67,6 +67,9 @@ class WordRepository private constructor(private val context: Context) {
     /** 导入词库，返回新增条数（重复单词自动跳过） */
     fun importWords(words: List<Word>): Int = db.bulkInsert(words)
 
+    /** 删除某个词条，用于清理导错/输错的单词 */
+    fun deleteWord(id: Long): Boolean = db.deleteById(id)
+
     fun getAllWords(): List<Word> = db.getAllWords()
 
     /** 按 id 取最新状态的单词，用于恢复未答完的复习队列 */

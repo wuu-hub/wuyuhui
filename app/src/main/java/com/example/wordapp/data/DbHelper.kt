@@ -158,6 +158,10 @@ class DbHelper private constructor(context: Context) :
         return c.use { if (it.moveToFirst()) it.toWord() else null }
     }
 
+    /** 删除单个词条，返回是否真的删掉了一条 */
+    fun deleteById(id: Long): Boolean =
+        writableDatabase.delete(TABLE, "_id = ?", arrayOf(id.toString())) > 0
+
     /** 随机取若干单词，用于测试出题 */
     fun getRandomWords(limit: Int): List<Word> {
         val result = ArrayList<Word>()
